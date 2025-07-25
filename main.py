@@ -23,29 +23,36 @@ session = HTTP(testnet=True)
 
 def get_rsi(symbol):
     url = f"https://api.bybit.com/v5/market/kline?category=linear&symbol={symbol}&interval={TIMEFRAME}&limit=100"
-    r = requests.get(url)
-    data = r.json()
-    if "result" not in data or "list" not in data["result"]:
-        return None
-    closes = [float(candle[4]) for candle in data["result"]["list"]]
-    if len(closes) < RSI_PERIOD:
-        return None
+    try:
+        response = requests.get(url)
+        data = response.json()
 
-    gains, losses = [], []
-    for i in range(1, RSI_PERIOD + 1):
-        change = closes[-i] - closes[-i - 1]
-        if change > 0:
-            gains.append(change)
-        else:
-            losses.append(abs(change))
+        if "result" not in data or "list" not in data["result"]:
+            logging.error(f"❌ Невірна відповідь API для {symbol}: {data}")
+            return None
 
-    avg_gain = sum(gains) / RSI_PERIOD
-    avg_loss = sum(losses) / RSI_PERIOD
-    if avg_loss == 0:
-        return 100
-    rs = avg_gain / avg_loss
-    rsi = 100 - (100 / (1 + rs))
-    return round(rsi, 2)
+        closes = [float(candle[4]) for candle in data["result"]["list"]]
+        if len(closes) < RSI_PERIOD + 1:
+            return None
+
+        gains, losses = [], []
+        for i in range(1, RSI_PERIOD + 1):
+            change = closes[-i] - closes[-i - 1]
+            if change > 0:
+                gains.append(change)
+            else:
+                losses.append(abs(change))
+
+        avg_gain = sum(gains) / RSI_PERIOD
+        avg_loss = sum(losses) / RSI_PERIOD
+        if avg_loss == 0:
+            return 100
+        rs = avg_gain / avg_loss
+        rsi = 100 - (100 / (1 + rs))
+        return round(rsi, 2)
+    except Exception as e:
+        logging.error(f"Помилка з {symbol}: {e}")
+        return None
 
 def send_signal(symbol, rsi):
     signal = ""
