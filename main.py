@@ -1,88 +1,36 @@
-import time
-import logging
-from pybit.unified_trading import HTTP
-import requests
-from telegram import Bot
-from datetime import datetime
+import time import logging import requests from telegram import Bot
 
-# ==== Налаштування ====
-TELEGRAM_TOKEN = "8357826174:AAE9HWW65FM2YeZMaW3delIFDTuMdXzv8vg"
-TELEGRAM_CHAT_ID = 343026365
-API_KEY = "your_bybit_api_key"
-API_SECRET = "your_bybit_api_secret"
+Telegram
 
-symbols = ["SOLUSDT", "BTCUSDT", "ETHUSDT", "XRPUSDT"]
-RSI_PERIOD = 14
-TIMEFRAME = "15"  # 15 хвилин
-START_BALANCE = 15
-TRADE_PERCENT = 0.10
-LEVERAGE = 5
+TELEGRAM_TOKEN = '8357826174:AAE9HWW65FM2YeZMaW3delIFDTuMdXzv8vg' CHAT_ID = 343026365 bot = Bot(token=TELEGRAM_TOKEN)
 
-bot = Bot(token=TELEGRAM_TOKEN)
-session = HTTP(testnet=True)
+Параметри
 
-def get_rsi(symbol):
-    url = f"https://api.bybit.com/v5/market/kline?category=linear&symbol={symbol}&interval={TIMEFRAME}&limit=100"
-    try:
-        response = requests.get(url)
-        data = response.json()
+SYMBOLS = ["SOLUSDT", "BTCUSDT", "ETHUSDT", "XRPUSDT"] TIMEFRAME = "15"  # 15-хвилинний таймфрейм LIMIT = 100 LEVERAGE = 5 BALANCE = 15 POSITION_SIZE = BALANCE * 0.1 * LEVERAGE  # 10% від балансу з плечем 5x
 
-        if "result" not in data or "list" not in data["result"]:
-            logging.error(f"❌ Невірна відповідь API для {symbol}: {data}")
-            return None
+logging.basicConfig(level=logging.INFO)
 
-        closes = [float(candle[4]) for candle in data["result"]["list"]]
-        if len(closes) < RSI_PERIOD + 1:
-            return None
+def get_klines(symbol): url = "https://api.bybit.com/v5/market/kline" params = { "category": "linear", "symbol": symbol, "interval": TIMEFRAME, "limit": LIMIT } try: response = requests.get(url, params=params) data = response.json() return [float(kline[4]) for kline in data["result"]["list"]]  # Закриття свічок except Exception as e: logging.error(f"Помилка з {symbol}: {e}") return []
 
-        gains, losses = [], []
-        for i in range(1, RSI_PERIOD + 1):
-            change = closes[-i] - closes[-i - 1]
-            if change > 0:
-                gains.append(change)
-            else:
-                losses.append(abs(change))
+def calculate_rsi(closes, period=14): if len(closes) < period: return None gains, losses = [], [] for i in range(1, period + 1): diff = closes[-i] - closes[-i - 1] if diff > 0: gains.append(diff) else: losses.append(abs(diff)) avg_gain = sum(gains) / period avg_loss = sum(losses) / period if avg_loss == 0: return 100 rs = avg_gain / avg_loss return 100 - (100 / (1 + rs))
 
-        avg_gain = sum(gains) / RSI_PERIOD
-        avg_loss = sum(losses) / RSI_PERIOD
-        if avg_loss == 0:
-            return 100
-        rs = avg_gain / avg_loss
-        rsi = 100 - (100 / (1 + rs))
-        return round(rsi, 2)
-    except Exception as e:
-        logging.error(f"Помилка з {symbol}: {e}")
-        return None
+def check_signals(): for symbol in SYMBOLS: closes = get_klines(symbol) if not closes or len(closes) < 15: logging.warning(f"Не вдалось отримати RSI для {symbol}") continue
 
-def send_signal(symbol, rsi):
-    signal = ""
+rsi = calculate_rsi(closes)
+    if rsi is None:
+        continue
+
+    msg = f"{symbol} | RSI: {round(rsi, 2)}"
     if rsi < 30:
-        signal = "🟢 LONG"
+        msg += f"\n🔵 LONG сигнал\nВідкрий позицію на ≈ {round(POSITION_SIZE, 2)} USDT"
     elif rsi > 70:
-        signal = "🔴 SHORT"
+        msg += f"\n🔴 SHORT сигнал\nВідкрий позицію на ≈ {round(POSITION_SIZE, 2)} USDT"
     else:
-        return
+        continue
 
-    amount = round((START_BALANCE * TRADE_PERCENT) * LEVERAGE, 2)
-    message = (
-        f"📈 {signal} сигнал по {symbol}\n"
-        f"RSI: {rsi}\n"
-        f"Рекомендована сума входу: ≈ {amount} USDT (з плечем {LEVERAGE}x)"
-    )
-    bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
+    logging.info(msg)
+    bot.send_message(chat_id=CHAT_ID, text=msg)
 
-def main():
-    while True:
-        for symbol in symbols:
-            try:
-                rsi = get_rsi(symbol)
-                if rsi:
-                    send_signal(symbol, rsi)
-                else:
-                    logging.warning(f"Не вдалось отримати RSI для {symbol}")
-            except Exception as e:
-                logging.error(f"Помилка з {symbol}: {e}")
-        time.sleep(900)  # 15 хвилин
+if name == "main": while True: check_signals() time.sleep(60 * 15)  # перевірка кожні 15 хвилин
 
-if __name__ == "__main__":
-    main()
+
