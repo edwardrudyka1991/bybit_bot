@@ -1,4 +1,7 @@
-import time import logging import requests from telegram import Bot
+import time
+import logging
+import requests
+from telegram import Bot
 
 Telegram
 
